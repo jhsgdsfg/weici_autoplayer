@@ -147,9 +147,9 @@ class Point:
 
 class Rect:
     
-    def __init__(self, upleft: Point, downright: Point):
-        self.topleft = upleft
-        self.bottomright = downright
+    def __init__(self, topleft: Point, bottomright: Point):
+        self.topleft = topleft
+        self.bottomright = bottomright
     
     def center(self) -> Point:
         return (self.topleft + self.bottomright) / 2
@@ -231,8 +231,12 @@ class Region(Meaning):
         lang: str = 'zh-CHS'
     
         rect: list[str] = region['boundingBox'].split(',')
-        topleft = Point(int(rect[0]), int(rect[1]), screen)
-        bottomright = Point(int(rect[4]), int(rect[5]), screen)
+        topleft = Point(int(rect[0])/screen.width,
+                        int(rect[1])/screen.height,
+                        screen) + screen.get_rects[1].topleft
+        bottomright = Point(int(rect[4])/screen.width,
+                            int(rect[5])/screen.height,
+                            screen) + screen.get_rects[1].topleft
         rect = Rect(topleft, bottomright)
         
         words = map(lambda word: Word(word, lang), text.split(';'))
