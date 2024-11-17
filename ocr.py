@@ -6,7 +6,9 @@ import requests
 import pyautogui
 
 from AuthV3Util import addAuthParams
+from util import get_lang, Word, Meaning
 from translate import Translator
+from main import Config
 
 class OCRAPI:
 
@@ -47,53 +49,40 @@ class OCRAPI:
         
         return regions
 
-class Config:
-    def __init__(self):
-        self.word_img_filename = 'word_img.png'
-        self.meanings_img_filename = 'meanings_img.png'
-        self.left_word_rect = Rect(Point(700/3840, 670/2160, self),
-                                   Point(1300/3840, 740/2160, self))
-        self.right_word_rect = Rect(Point(2500/3840, 670/2160, self),
-                                    Point(3100/3840, 740/2160, self))
-        self.left_meanings_rect = Rect(Point(330/3840, 960/2160, self),
-                                       Point(1680/3840, 2020/2160, self))
-        self.right_meanings_rect = Rect(Point(2100/3840, 960/2160, self),
-                                        Point(3480/3840, 2020/2160, self))
-
 class Screen:
     
-    def __init__(self, ocrapi: OCRAPI, side: str, config: Config) -> None:
+    def __init__(self, side: str) -> None:
         self.width, self.height = pyautogui.size()
-        self.ocrapi: OCRAPI = ocrapi
+        self.ocrapi: OCRAPI = OCRAPI()
         self.side: str = side
-        self.config = config
+        self.config = Config(self)
 
     def click(self, x_ratio: float, y_ratio: float) -> None:
         pyautogui.click(x_ratio*self.width, y_ratio*self.height)
     
-    def ocr(self) -> tuple['Word', list['Region']] | None:
-        word_rect, meanings_rect = self.get_rects()
-                
-        self.screenshot(self.config.word_img_filename, word_rect)
-        self.screenshot(self.config.meanings_img_filename, meanings_rect)
-        
-        word_region = self.ocrapi.ocr(self.config.word_img_filename, 'EN')[0]
+    def ocr(self) -> tuple[Word, list['Region']] | None:
+        self.screenshot(self.config.word_img_filename, self.get_word_rect())
+        self.screenshot(self.config.meanings_img_filename, self.get_meanings_rect())
+
+        word_region = self.ocrapi.ocr(self.config.word_img_filename,
+                                      get_lang('ocr', self.config.lang_from))[0]
         if word_region is not None:
             word = Word.from_region_dict(word_region)
         else:
             return None
         
-        meanings_region = self.ocrapi.ocr(self.config.meanings_img_filename, 'zh-CHS')
+        meanings_region = self.ocrapi.ocr(self.config.meanings_img_filename, get_lang('ocr', self.config.lang_to))
         if meanings_region is not None:
-            meanings = map(Region.from_region_dict,
-                        meanings_region,
-                        cycle([self]))
+            meanings = list(map(Region.from_region_dict,
+                                meanings_region,
+                                cycle([self])))
         else:
             return None
         
         return word, meanings
 
-    def screenshot(self, img_filename: str, rect: 'Rect') -> None:
+    @staticmethod
+    def screenshot(img_filename: str, rect: 'Rect') -> None:
         pyautogui.screenshot(img_filename,
                                 (rect.left(),
                                 rect.top(),
@@ -102,17 +91,17 @@ class Screen:
                                 )
                              )
 
-    def get_rects(self):
+    def get_word_rect(self) -> 'Rect':
         if self.side == 'left':
-            word_rect = self.config.left_word_rect
-            meanings_rect = self.config.left_meanings_rect
+            return self.config.left_word_rect
         elif self.side == 'right':
-            word_rect = self.config.right_word_rect
-            meanings_rect = self.config.right_meanings_rect
-        else:
-            raise Exception('side not left or right')
-        
-        return word_rect, meanings_rect
+            return self.config.right_word_rect
+
+    def get_meanings_rect(self) -> 'Rect':
+        if self.side == 'left':
+            return self.config.left_meanings_rect
+        elif self.side == 'right':
+            return self.config.right_meanings_rect
 
 class Point:
     
@@ -133,14 +122,14 @@ class Point:
     def y(self) -> int:
         return round(self.y_ratio * self.screen.height)
     
-    def __add__(self, value: "Point") -> "Point":
-        return Point(self.x_ratio+value.x_ratio, self.y_ratio+value.y_ratio, self.screen)
+    def __add__(self, other: 'Point') -> 'Point':
+        return Point(self.x_ratio + other.x_ratio, self.y_ratio + other.y_ratio, self.screen)
     
-    def __mul__(self, value) -> "Point":
-        return Point(self.x_ratio*value, self.y_ratio*value, self.screen)
+    def __mul__(self, other) -> 'Point':
+        return Point(self.x_ratio * other, self.y_ratio * other, self.screen)
     
-    def __div__(self, value) -> "Point":
-        return Point(self.x_ratio/value, self.y_ratio/value, self.screen)
+    def __truediv__(self, other) -> 'Point':
+        return Point(self.x_ratio / other, self.y_ratio / other, self.screen)
     
     def __repr__(self):
         return f"Point({self.x_ratio}, {self.y_ratio})"
@@ -174,52 +163,13 @@ class Rect:
 
     def click(self) -> None:
         self.center().click()
-    
-class Word:
-    
-    def __init__(self, text: str, lang: str) -> None:
-        self.text: str = text
-        self.lang: str = lang
-    
-    def translate(self, target: str, translator: Translator) -> "Meaning":
-        res = translator.translate(self.text,
-                                   self.lang,
-                                   target)
-        
-        words = map(lambda x: Word(x, target), res)
-        
-        return Meaning(words)
-    
-    @staticmethod
-    def from_region_dict(region: dict) -> 'Word':
-        text: str = region['text']
-        lang: str = region['lang']
-        
-        return Word(text, lang)
-    
+
     def __repr__(self):
-        return f"Word {self.text} in {self.lang}"
-    
-    def __eq__(self, value: "Word") -> bool:
-        return self.text == value.text
-    
-class Meaning:
-    
-    def __init__(self, words: Iterable[Word]) -> None:
-        self.words: list[Word] = list(words)
-            
-    def __repr__(self):
-        return f"Meaning {self.words}"
-    
-    def __eq__(self, value: "Meaning") -> bool:
-        for word in self.words:
-            if word in value.words:
-                return True
-        return False
+        return f'Rect({self.topleft} {self.bottomright})'
 
 class Region(Meaning):
     def __init__(self, words: Iterable[Word], rect: Rect):
-        self.words: list[Word] = list(words)
+        super().__init__(words)
         self.rect: Rect = rect
 
     def click(self) -> None:
@@ -228,16 +178,16 @@ class Region(Meaning):
     @staticmethod
     def from_region_dict(region: dict, screen: Screen) -> 'Region':
         text: str = region['text']
-        lang: str = 'zh-CHS'
+        lang: str = get_lang('ocr_res', region['lang'])
     
         rect: list[str] = region['boundingBox'].split(',')
         topleft = Point(int(rect[0])/screen.width,
                         int(rect[1])/screen.height,
-                        screen) + screen.get_rects[1].topleft
+                        screen) + screen.get_meanings_rect().topleft
         bottomright = Point(int(rect[4])/screen.width,
                             int(rect[5])/screen.height,
-                            screen) + screen.get_rects[1].topleft
-        rect = Rect(topleft, bottomright)
+                            screen) + screen.get_meanings_rect().topleft
+        rect: Rect = Rect(topleft, bottomright)
         
         words = map(lambda word: Word(word, lang), text.split(';'))
         return Region(words, rect)
@@ -245,16 +195,15 @@ class Region(Meaning):
     def __repr__(self):
         return f"Region {self.words}"
 
-
 def test_word_and_meanings():
     translator = Translator()
     
-    good = Word('good', 'EN')
-    good_translate = good.translate('zh-CHS', translator)
+    good = Word('good', 'en')
+    good_translate = good.translate('zh', translator)
     
-    good_meaning = Meaning([Word('好', 'zh-CHS')])
-    bad_meaning = Meaning([Word('坏', 'zh-CHS')])
-    great_meaning = Meaning([Word('极好', 'zh-CHS')])
+    good_meaning = Meaning([Word('好', 'zh')])
+    bad_meaning = Meaning([Word('坏', 'zh')])
+    great_meaning = Meaning([Word('极好', 'zh')])
     meanings = [bad_meaning, great_meaning, good_meaning]
     
     print(f"good is {good}")
@@ -271,15 +220,15 @@ def test_word_and_meanings():
 
 def test_word_and_regions():
     translator = Translator()
-    screen = Screen(OCRAPI(), 'left', Config())
+    screen = Screen('left')
     
-    good = Word('good', 'EN')
-    good_translate = good.translate('zh-CHS', translator)
+    good = Word('good', 'en')
+    good_translate = good.translate('zh', translator)
     
     rect_example = Rect(Point(0.1, 0.1, screen), Point(0.2, 0.2, screen))
-    good_region = Region([Word('好', 'zh-CHS')], rect_example)
-    bad_region = Region([Word('坏', 'zh-CHS')], rect_example)
-    great_region = Region([Word('极好', 'zh-CHS')], rect_example)
+    good_region = Region([Word('好', 'zh')], rect_example)
+    bad_region = Region([Word('坏', 'zh')], rect_example)
+    great_region = Region([Word('极好', 'zh')], rect_example)
     regions = [bad_region, great_region, good_region]
     
     print(f"good is {good}")
@@ -299,14 +248,19 @@ def test_ocrapi():
     screenshot_filename = 'sample/screenshot.png'
     
     word_res = ocrapi.ocr(screenshot_filename, 'en')
-    meanings_res = ocrapi.ocr(screenshot_filename, 'zh-CHS')
+    meanings_res = ocrapi.ocr(screenshot_filename, 'zh')
     
     print(word_res)
     print(meanings_res)
 
+def test_screenshot():
+    screen = Screen('left')
+    Screen.screenshot(screen.config.word_img_filename, screen.get_word_rect())
+    Screen.screenshot(screen.config.meanings_img_filename, screen.get_meanings_rect())
+
 def test_screen():
     import time
-    screen = Screen(OCRAPI(), 'left', Config())
+    screen = Screen('left')
     
     time.sleep(5)
     word, meanings = screen.ocr()
@@ -318,5 +272,6 @@ if __name__ == "__main__":
     # test_word_and_meanings()
     # test_word_and_regions()
     # test_ocrapi()
+    # test_screenshot()
     # test_screen()
     pass

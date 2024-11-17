@@ -11,10 +11,10 @@ class Translator:
     
     def translate(self,
                   text: str,
-                  src: str,
-                  dst: str) -> list[str]:
+                  lang_from: str,
+                  lang_to: str) -> list[str]:
         
-        data = {'q': text, 'from': src, 'to': dst}
+        data = {'q': text, 'from': lang_from, 'to': lang_to}
 
         addAuthParams(self.appkey, self.key, data)
 
