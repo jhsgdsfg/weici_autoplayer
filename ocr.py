@@ -1,5 +1,4 @@
 import base64
-from itertools import cycle
 from collections.abc import Iterable
 
 import requests
@@ -73,9 +72,7 @@ class Screen:
         
         meanings_region = self.ocrapi.ocr(self.config.meanings_img_filename, get_lang('ocr', self.config.lang_to))
         if meanings_region is not None:
-            meanings = list(map(Region.from_region_dict,
-                                meanings_region,
-                                cycle([self])))
+            meanings = [Region.from_region_dict(region, self) for region in meanings_region]
         else:
             return None
         
