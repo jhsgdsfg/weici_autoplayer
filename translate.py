@@ -22,6 +22,7 @@ class Translator:
         
         res = requests.post(self.query_url,
                             data,
-                            header).json()
+                            header,
+                            timeout=2).json()
         
         return res['translation']

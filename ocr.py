@@ -69,7 +69,7 @@ class OCRAPI:
 
         header = {'Content-Type': 'application/x-www-form-urlencoded'}
 
-        res = requests.post(self.query_url, data, header).json()
+        res = requests.post(self.query_url, data, header, timeout=2).json()
 
         if res['errorCode'] != '0':
             raise Exception('error calling ocr api')
